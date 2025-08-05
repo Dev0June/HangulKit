@@ -203,15 +203,18 @@ echo "Framework symbolic links created"
 
 # 8. 프레임워크 검증
 echo "Verifying framework..."
+# Scripts 디렉토리로 돌아와서 올바른 상대 경로 사용
+cd /Volumes/Data/Project/macime/HangulKit/Scripts
 FRAMEWORK_BINARY="${FRAMEWORK_DIR}/${FRAMEWORK_NAME}"
 if [ -f "$FRAMEWORK_BINARY" ]; then
-    echo "  Framework binary exists at: $FRAMEWORK_BINARY"
+    echo "  ✓ Framework binary exists at: $FRAMEWORK_BINARY"
     file "$FRAMEWORK_BINARY"
     
     # 아키텍처 확인
+    echo "  Architecture info:"
     lipo -info "$FRAMEWORK_BINARY"
 else
-    echo "  Framework binary not found at: $FRAMEWORK_BINARY"
+    echo "  ✗ Framework binary not found at: $FRAMEWORK_BINARY"
     echo "  Checking what files exist in framework:"
     ls -la "${FRAMEWORK_DIR}/" || echo "Framework directory not found"
     ls -la "${FRAMEWORK_DIR}/Versions/A/" || echo "Versions/A directory not found"

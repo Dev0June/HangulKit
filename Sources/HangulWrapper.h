@@ -101,34 +101,5 @@ typedef NS_ENUM(NSInteger, HangulInputContextOption) {
 
 @end
 
-// Hanja Support
-@interface Hanja : NSObject
-
-@property (nonatomic, readonly) NSString *key;
-@property (nonatomic, readonly) NSString *value;
-@property (nonatomic, readonly) NSString *comment;
-
-@end
-
-@interface HanjaList : NSObject
-
-@property (nonatomic, readonly) NSInteger size;
-@property (nonatomic, readonly) NSString *key;
-
-- (nullable Hanja *)hanjaAtIndex:(NSUInteger)index;
-- (nullable NSString *)keyAtIndex:(NSUInteger)index;
-- (nullable NSString *)valueAtIndex:(NSUInteger)index;
-- (nullable NSString *)commentAtIndex:(NSUInteger)index;
-
-@end
-
-@interface HanjaTable : NSObject
-
-- (instancetype)initWithFile:(NSString *)filePath;
-- (nullable HanjaList *)matchExact:(NSString *)key;
-- (nullable HanjaList *)matchPrefix:(NSString *)key;
-- (nullable HanjaList *)matchSuffix:(NSString *)key;
-
-@end
 
 NS_ASSUME_NONNULL_END

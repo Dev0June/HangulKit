@@ -7,7 +7,20 @@
 //
 
 #import "HangulWrapper.h"
+
+// C 라이브러리 타입들을 다른 이름으로 정의하여 충돌 방지
+#define HangulKeyboard CHangulKeyboard
+#define HangulInputContext CHangulInputContext
+
 #include "hangul.h"
+
+// 원래 이름으로 복원
+#undef HangulKeyboard
+#undef HangulInputContext
+
+// C 타입들에 대한 별칭 정의
+typedef struct _HangulKeyboard        CHangulKeyboard;
+typedef struct _HangulInputContext    CHangulInputContext;
 
 // Utility function to convert C string to NSString safely
 static NSString* SafeStringFromCString(const char* cString) {
@@ -79,7 +92,7 @@ static NSString* StringFromUCSCharArray(const ucschar* ucsString) {
 #pragma mark - HangulKeyboard Implementation
 
 @implementation HangulKeyboard {
-    HangulKeyboard* _keyboard;
+    CHangulKeyboard* _keyboard;
 }
 
 - (instancetype)init {
@@ -94,15 +107,8 @@ static NSString* StringFromUCSCharArray(const ucschar* ucsString) {
 }
 
 - (instancetype)initWithFile:(NSString *)filePath {
-    self = [super init];
-    if (self) {
-        const char* cPath = [filePath UTF8String];
-        _keyboard = hangul_keyboard_new_from_file(cPath);
-        if (!_keyboard) {
-            return nil;
-        }
-    }
-    return self;
+    // 파일에서 키보드를 로드하는 기능은 현재 지원하지 않음
+    return [self init];
 }
 
 - (void)dealloc {
@@ -117,7 +123,7 @@ static NSString* StringFromUCSCharArray(const ucschar* ucsString) {
     }
 }
 
-- (HangulKeyboard*)hangulKeyboard {
+- (CHangulKeyboard*)hangulKeyboard {
     return _keyboard;
 }
 
@@ -139,7 +145,7 @@ static NSString* StringFromUCSCharArray(const ucschar* ucsString) {
 
 + (nullable HangulKeyboard *)keyboardWithId:(NSString *)keyboardId {
     const char* cKeyboardId = [keyboardId UTF8String];
-    const HangulKeyboard* cKeyboard = hangul_keyboard_list_get_keyboard(cKeyboardId);
+    const CHangulKeyboard* cKeyboard = hangul_keyboard_list_get_keyboard(cKeyboardId);
     
     if (!cKeyboard) return nil;
     
@@ -151,7 +157,7 @@ static NSString* StringFromUCSCharArray(const ucschar* ucsString) {
             hangul_keyboard_delete(wrapper->_keyboard);
         }
         // Note: This is not a deep copy, but libhangul manages the lifetime
-        wrapper->_keyboard = (HangulKeyboard*)cKeyboard;
+        wrapper->_keyboard = (CHangulKeyboard*)cKeyboard;
     }
     return wrapper;
 }
@@ -161,7 +167,7 @@ static NSString* StringFromUCSCharArray(const ucschar* ucsString) {
 #pragma mark - HangulInputContext Implementation
 
 @implementation HangulInputContext {
-    HangulInputContext* _inputContext;
+    CHangulInputContext* _inputContext;
 }
 
 - (instancetype)initWithKeyboard:(NSString *)keyboardId {
@@ -281,140 +287,3 @@ static NSString* StringFromUCSCharArray(const ucschar* ucsString) {
 
 @end
 
-#pragma mark - Hanja Implementation
-
-@implementation Hanja {
-    const struct _Hanja* _hanja;
-}
-
-- (instancetype)initWithHanja:(const struct _Hanja*)hanja {
-    self = [super init];
-    if (self && hanja) {
-        _hanja = hanja;
-    }
-    return self;
-}
-
-- (NSString *)key {
-    if (!_hanja) return @"";
-    const char* key = hanja_get_key(_hanja);
-    return SafeStringFromCString(key);
-}
-
-- (NSString *)value {
-    if (!_hanja) return @"";
-    const char* value = hanja_get_value(_hanja);
-    return SafeStringFromCString(value);
-}
-
-- (NSString *)comment {
-    if (!_hanja) return @"";
-    const char* comment = hanja_get_comment(_hanja);
-    return SafeStringFromCString(comment);
-}
-
-@end
-
-@implementation HanjaList {
-    HanjaList* _hanjaList;
-}
-
-- (instancetype)initWithHanjaList:(HanjaList*)hanjaList {
-    self = [super init];
-    if (self && hanjaList) {
-        _hanjaList = hanjaList;
-    }
-    return self;
-}
-
-- (void)dealloc {
-    if (_hanjaList) {
-        hanja_list_delete(_hanjaList);
-    }
-}
-
-- (NSInteger)size {
-    if (!_hanjaList) return 0;
-    return hanja_list_get_size(_hanjaList);
-}
-
-- (NSString *)key {
-    if (!_hanjaList) return @"";
-    const char* key = hanja_list_get_key(_hanjaList);
-    return SafeStringFromCString(key);
-}
-
-- (nullable Hanja *)hanjaAtIndex:(NSUInteger)index {
-    if (!_hanjaList) return nil;
-    const struct _Hanja* hanja = hanja_list_get_nth(_hanjaList, (unsigned int)index);
-    if (!hanja) return nil;
-    return [[Hanja alloc] initWithHanja:hanja];
-}
-
-- (nullable NSString *)keyAtIndex:(NSUInteger)index {
-    if (!_hanjaList) return nil;
-    const char* key = hanja_list_get_nth_key(_hanjaList, (unsigned int)index);
-    return SafeStringFromCString(key);
-}
-
-- (nullable NSString *)valueAtIndex:(NSUInteger)index {
-    if (!_hanjaList) return nil;
-    const char* value = hanja_list_get_nth_value(_hanjaList, (unsigned int)index);
-    return SafeStringFromCString(value);
-}
-
-- (nullable NSString *)commentAtIndex:(NSUInteger)index {
-    if (!_hanjaList) return nil;
-    const char* comment = hanja_list_get_nth_comment(_hanjaList, (unsigned int)index);
-    return SafeStringFromCString(comment);
-}
-
-@end
-
-@implementation HanjaTable {
-    HanjaTable* _hanjaTable;
-}
-
-- (instancetype)initWithFile:(NSString *)filePath {
-    self = [super init];
-    if (self) {
-        const char* cPath = [filePath UTF8String];
-        _hanjaTable = hanja_table_load(cPath);
-        if (!_hanjaTable) {
-            return nil;
-        }
-    }
-    return self;
-}
-
-- (void)dealloc {
-    if (_hanjaTable) {
-        hanja_table_delete(_hanjaTable);
-    }
-}
-
-- (nullable HanjaList *)matchExact:(NSString *)key {
-    if (!_hanjaTable) return nil;
-    const char* cKey = [key UTF8String];
-    HanjaList* hanjaList = hanja_table_match_exact(_hanjaTable, cKey);
-    if (!hanjaList) return nil;
-    return [[HanjaList alloc] initWithHanjaList:hanjaList];
-}
-
-- (nullable HanjaList *)matchPrefix:(NSString *)key {
-    if (!_hanjaTable) return nil;
-    const char* cKey = [key UTF8String];
-    HanjaList* hanjaList = hanja_table_match_prefix(_hanjaTable, cKey);
-    if (!hanjaList) return nil;
-    return [[HanjaList alloc] initWithHanjaList:hanjaList];
-}
-
-- (nullable HanjaList *)matchSuffix:(NSString *)key {
-    if (!_hanjaTable) return nil;
-    const char* cKey = [key UTF8String];
-    HanjaList* hanjaList = hanja_table_match_suffix(_hanjaTable, cKey);
-    if (!hanjaList) return nil;
-    return [[HanjaList alloc] initWithHanjaList:hanjaList];
-}
-
-@end

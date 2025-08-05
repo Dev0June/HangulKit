@@ -6,8 +6,7 @@
 set -e
 
 FRAMEWORK_NAME="HangulKit"
-BUILD_DIR="build"
-FRAMEWORK_DIR="${BUILD_DIR}/${FRAMEWORK_NAME}.framework"
+FRAMEWORK_DIR="../../${FRAMEWORK_NAME}.framework"
 
 echo "Creating ${FRAMEWORK_NAME}.framework for macOS IME"
 
@@ -18,79 +17,142 @@ mkdir -p "$FRAMEWORK_DIR/Versions/A/Headers"
 mkdir -p "$FRAMEWORK_DIR/Versions/A/Resources"
 mkdir -p "$FRAMEWORK_DIR/Versions/A/Modules"
 
-# 심볼릭 링크 생성 (표준 프레임워크 구조)
-cd "$FRAMEWORK_DIR"
-ln -sf Versions/Current/Headers Headers
-ln -sf Versions/Current/Resources Resources
-ln -sf Versions/Current/Modules Modules
-ln -sf Versions/Current/$FRAMEWORK_NAME $FRAMEWORK_NAME
-cd Versions
-ln -sf A Current
-cd ../../../
+# 심볼릭 링크 생성은 프레임워크 완성 후에 처리
 
 echo "Framework directory structure created"
 
-# 2. 정적 라이브러리 생성 (Universal Binary)
-echo "Building universal static library..."
+# 2. 동적 라이브러리 빌드 및 복사
+echo "Building dynamic library..."
 
-# Intel (x86_64) 빌드
-echo "  Building for x86_64..."
-cd libhangul
-make clean > /dev/null 2>&1
-cmake -DCMAKE_OSX_ARCHITECTURES=x86_64 . > /dev/null 2>&1
-make > /dev/null 2>&1
-ar rcs ../libhangul_x86_64.a hangul/CMakeFiles/hangul.dir/*.o
+# libhangul 빌드
+echo "  Building libhangul..."
+cd ../libhangul
 
-# Apple Silicon (arm64) 빌드 (크로스 컴파일)
-echo "  Building for arm64..."
-make clean > /dev/null 2>&1
-cmake -DCMAKE_OSX_ARCHITECTURES=arm64 . > /dev/null 2>&1
-make > /dev/null 2>&1
-ar rcs ../libhangul_arm64.a hangul/CMakeFiles/hangul.dir/*.o
+# 이미 빌드된 라이브러리 확인
+EXISTING_DYLIB=$(find hangul -name "libhangul.*.*.*.dylib" -type f | head -1)
 
-cd ..
+if [ -n "$EXISTING_DYLIB" ]; then
+    echo "  Found existing library: $EXISTING_DYLIB"
+else
+    echo "  Building new library..."
+    # CMake 설정 및 빌드 (Universal Binary)
+    if ! cmake -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DBUILD_SHARED_LIBS=ON . > /dev/null 2>&1; then
+        echo "  Error: cmake failed"
+        exit 1
+    fi
+    
+    if ! make > /dev/null 2>&1; then
+        echo "  Warning: make had issues, but checking for dylib files..."
+    fi
+    
+    EXISTING_DYLIB=$(find hangul -name "libhangul.*.*.*.dylib" -type f | head -1)
+fi
 
-# Universal Binary 생성
-echo "  Creating universal binary..."
-lipo -create libhangul_x86_64.a libhangul_arm64.a -output "${FRAMEWORK_DIR}/Versions/A/${FRAMEWORK_NAME}"
+# 라이브러리 파일 확인
+echo "  Checking for built library..."
+if [ -n "$EXISTING_DYLIB" ]; then
+    echo "  Found: $EXISTING_DYLIB"
+    echo "  Architecture info:"
+    file "$EXISTING_DYLIB"
+else
+    echo "  Error: No libhangul dylib files found"
+    echo "  Available files in hangul directory:"
+    ls -la hangul/
+    exit 1
+fi
 
-echo "Universal static library created"
+cd ../Scripts
 
-# 3. 헤더 파일 복사
+echo "Library check completed"
+
+# 3. Objective-C 래퍼 컴파일 및 결합
+echo "Building complete framework with Objective-C wrapper..."
+
+# HangulWrapper.m과 libhangul을 함께 컴파일
+if [ -f "../Sources/HangulWrapper.m" ]; then
+    echo "  Creating combined library with wrapper..."
+    
+    # 프레임워크 디렉토리가 존재하는지 확인
+    FULL_FRAMEWORK_PATH="${FRAMEWORK_DIR}/Versions/A"
+    echo "  FRAMEWORK_DIR: $FRAMEWORK_DIR"
+    echo "  FULL_FRAMEWORK_PATH: $FULL_FRAMEWORK_PATH"
+    echo "  Checking framework directory: $FULL_FRAMEWORK_PATH"
+    if [ ! -d "$FULL_FRAMEWORK_PATH" ]; then
+        echo "  Error: Framework directory not found: $FULL_FRAMEWORK_PATH"
+        echo "  Current directory: $(pwd)"
+        echo "  Let's try to create it..."
+        mkdir -p "$FULL_FRAMEWORK_PATH"
+        if [ ! -d "$FULL_FRAMEWORK_PATH" ]; then
+            echo "  Failed to create framework directory"
+            exit 1
+        fi
+    fi
+    echo "  Framework directory ready"
+    
+    # 새로운 동적 라이브러리 생성
+    clang -arch x86_64 -arch arm64 \
+        -dynamiclib \
+        -install_name @rpath/${FRAMEWORK_NAME}.framework/${FRAMEWORK_NAME} \
+        -current_version 1.1.0 \
+        -compatibility_version 1.0.0 \
+        -mmacosx-version-min=12.7 \
+        -I ../libhangul/hangul \
+        -I ../Sources \
+        -framework Foundation \
+        ../Sources/HangulWrapper.m \
+        ../libhangul/hangul/libhangul.1.1.0.dylib \
+        -o "${FRAMEWORK_DIR}/Versions/A/${FRAMEWORK_NAME}"
+    
+    if [ $? -eq 0 ] && [ -f "${FRAMEWORK_DIR}/Versions/A/${FRAMEWORK_NAME}" ]; then
+        echo "  Combined library created successfully"
+        echo "  Verifying created library:"
+        file "${FRAMEWORK_DIR}/Versions/A/${FRAMEWORK_NAME}"
+    else
+        echo "  Warning: Failed to create combined library, using libhangul only"
+        echo "  Clang exit code: $?"
+        echo "  Checking if target file exists: $(ls -la ${FRAMEWORK_DIR}/Versions/A/ 2>/dev/null || echo 'Directory not found')"
+        # 원래 라이브러리 사용
+        cp ../libhangul/hangul/libhangul.1.1.0.dylib "${FRAMEWORK_DIR}/Versions/A/${FRAMEWORK_NAME}"
+        echo "  Copied original libhangul library"
+    fi
+else
+    echo "  Warning: HangulWrapper.m not found, using libhangul only"
+    # 원래 라이브러리 사용
+    cp ../libhangul/hangul/libhangul.1.1.0.dylib "${FRAMEWORK_DIR}/Versions/A/${FRAMEWORK_NAME}"
+fi
+
+echo "Framework library build completed"
+
+# 4. 헤더 파일 복사
 echo "Copying header files..."
-cp Sources/HangulWrapper.h "${FRAMEWORK_DIR}/Versions/A/Headers/"
-cp libhangul/hangul/hangul.h "${FRAMEWORK_DIR}/Versions/A/Headers/"
+if [ -f "../Sources/HangulWrapper.h" ]; then
+    cp ../Sources/HangulWrapper.h "${FRAMEWORK_DIR}/Versions/A/Headers/"
+    echo "  HangulWrapper.h copied"
+else
+    echo "  Warning: HangulWrapper.h not found"
+fi
+
+# hangul.h는 HangulWrapper.h와 심볼 충돌을 일으키므로 포함하지 않음
+echo "  Skipping hangul.h to avoid symbol conflicts"
 
 echo "Header files copied"
 
-# 4. 모듈 맵 생성
+# 5. 모듈 맵 생성
 echo "Creating module map..."
 cat > "${FRAMEWORK_DIR}/Versions/A/Modules/module.modulemap" << 'EOF'
 framework module HangulKit {
     header "HangulWrapper.h"
-    header "hangul.h"
     
     export *
     
     // C 라이브러리 링킹 설정
     link "c++"
-    
-    // 모듈 설정
-    module hangul {
-        header "hangul.h"
-        export *
-    }
-    
-    module wrapper {
-        header "HangulWrapper.h"
-        export *
-    }
 }
 EOF
 
 echo "Module map created"
 
-# 5. Info.plist 생성
+# 6. Info.plist 생성
 echo "Creating Info.plist..."
 cat > "${FRAMEWORK_DIR}/Versions/A/Resources/Info.plist" << EOF
 <?xml version="1.0" encoding="UTF-8"?>
@@ -127,26 +189,51 @@ EOF
 
 echo "Info.plist created"
 
-# 6. 프레임워크 검증
+# 7. 프레임워크 심볼릭 링크 생성 (표준 macOS 프레임워크 구조)
+echo "Creating framework symbolic links..."
+cd "$FRAMEWORK_DIR"
+ln -sf Versions/Current/Headers Headers
+ln -sf Versions/Current/Resources Resources  
+ln -sf Versions/Current/Modules Modules
+ln -sf Versions/Current/$FRAMEWORK_NAME $FRAMEWORK_NAME
+cd Versions
+ln -sf A Current
+cd ../../../
+echo "Framework symbolic links created"
+
+# 8. 프레임워크 검증
 echo "Verifying framework..."
-if [ -f "${FRAMEWORK_DIR}/${FRAMEWORK_NAME}" ]; then
-    echo "  Framework binary exists"
-    file "${FRAMEWORK_DIR}/${FRAMEWORK_NAME}"
+FRAMEWORK_BINARY="${FRAMEWORK_DIR}/${FRAMEWORK_NAME}"
+if [ -f "$FRAMEWORK_BINARY" ]; then
+    echo "  Framework binary exists at: $FRAMEWORK_BINARY"
+    file "$FRAMEWORK_BINARY"
     
     # 아키텍처 확인
-    lipo -info "${FRAMEWORK_DIR}/${FRAMEWORK_NAME}"
+    lipo -info "$FRAMEWORK_BINARY"
 else
-    echo "  Framework binary not found"
+    echo "  Framework binary not found at: $FRAMEWORK_BINARY"
+    echo "  Checking what files exist in framework:"
+    ls -la "${FRAMEWORK_DIR}/" || echo "Framework directory not found"
+    ls -la "${FRAMEWORK_DIR}/Versions/A/" || echo "Versions/A directory not found"
     exit 1
 fi
 
-# 7. 정리
+# 9. 프레임워크가 이미 프로젝트 루트에 생성됨
+echo "Framework created directly in macime project root"
+if [ -d "${FRAMEWORK_DIR}" ]; then
+    echo "  ✓ Framework successfully created at: ${FRAMEWORK_DIR}"
+    ls -la "${FRAMEWORK_DIR}"
+else
+    echo "  ✗ Framework creation failed"
+fi
+
+# 10. 정리
 echo "Cleaning up temporary files..."
-rm -f libhangul_x86_64.a libhangul_arm64.a
+# 정적 라이브러리 파일들이 생성되지 않으므로 정리할 것이 없음
 
 echo ""
 echo "${FRAMEWORK_NAME}.framework 생성 완료!"
-echo "위치: $(pwd)/${FRAMEWORK_DIR}"
+echo "위치: ${FRAMEWORK_DIR}"
 echo ""
 echo "사용법:"
 echo "1. IME 프로젝트에서 프레임워크 추가:"

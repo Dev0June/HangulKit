@@ -189,17 +189,69 @@ EOF
 
 echo "Info.plist created"
 
+# libhangul.dylib를 프레임워크에 복사 및 경로 수정
+echo "Bundling libhangul.dylib into framework..."
+if [ -f "../libhangul/hangul/libhangul.1.1.0.dylib" ]; then
+    # libhangul.dylib를 프레임워크에 복사
+    cp ../libhangul/hangul/libhangul.1.1.0.dylib "${FRAMEWORK_DIR}/Versions/A/"
+    
+    # 심볼릭 링크 생성 (libhangul.1.dylib -> libhangul.1.1.0.dylib)
+    cd "${FRAMEWORK_DIR}/Versions/A"
+    ln -sf libhangul.1.1.0.dylib libhangul.1.dylib
+    cd - > /dev/null
+    
+    # HangulKit 프레임워크의 libhangul 의존성 경로를 프레임워크 내부로 수정
+    install_name_tool -change @rpath/libhangul.1.dylib @loader_path/libhangul.1.dylib "${FRAMEWORK_DIR}/Versions/A/${FRAMEWORK_NAME}"
+    
+    # install_name_tool 결과 확인
+    echo "  Verifying install_name_tool changes..."
+    otool -L "${FRAMEWORK_DIR}/Versions/A/${FRAMEWORK_NAME}" | grep libhangul || echo "  Warning: libhangul dependency not found"
+    
+    # libhangul.dylib 서명 (개발용으로만, ad-hoc 서명)
+    echo "  Signing libhangul.dylib..."
+    codesign --force --sign - --timestamp=none "${FRAMEWORK_DIR}/Versions/A/libhangul.1.1.0.dylib"
+    if [ $? -eq 0 ]; then
+        echo "    ✓ libhangul.1.1.0.dylib signed successfully"
+    else
+        echo "    ✗ Failed to sign libhangul.1.1.0.dylib"
+    fi
+    
+    codesign --force --sign - --timestamp=none "${FRAMEWORK_DIR}/Versions/A/libhangul.1.dylib"
+    if [ $? -eq 0 ]; then
+        echo "    ✓ libhangul.1.dylib signed successfully"
+    else
+        echo "    ✗ Failed to sign libhangul.1.dylib"
+    fi
+    
+    echo "  ✓ libhangul.dylib bundled, signed, and dependency path updated"
+else
+    echo "  ✗ Warning: libhangul.1.1.0.dylib not found"
+fi
+
 # 7. 프레임워크 심볼릭 링크 생성 (표준 macOS 프레임워크 구조)
 echo "Creating framework symbolic links..."
 cd "$FRAMEWORK_DIR"
-ln -sf Versions/Current/Headers Headers
-ln -sf Versions/Current/Resources Resources  
-ln -sf Versions/Current/Modules Modules
-ln -sf Versions/Current/$FRAMEWORK_NAME $FRAMEWORK_NAME
+
+# 먼저 Versions/Current 심볼릭 링크 생성
 cd Versions
+rm -rf Current  # 혹시 디렉토리로 생성된 경우 삭제
 ln -sf A Current
+cd ..
+
+# 프레임워크 루트의 필수 심볼릭 링크들 생성 (표준 구조)
+ln -sf Versions/Current/Headers Headers
+ln -sf Versions/Current/Resources Resources
+ln -sf Versions/Current/$FRAMEWORK_NAME $FRAMEWORK_NAME
+
+# libhangul.1.dylib는 프레임워크 루트에 노출하지 않음 (내부 의존성)
+
 cd ../../../
 echo "Framework symbolic links created"
+
+# 심볼릭 링크 검증
+echo "Verifying symbolic links..."
+ls -la "${FRAMEWORK_DIR}/" | grep "^l" && echo "  ✓ Framework root symbolic links OK" || echo "  ✗ Framework root symbolic links missing"
+ls -la "${FRAMEWORK_DIR}/Versions/" | grep "^l" && echo "  ✓ Versions symbolic links OK" || echo "  ✗ Versions symbolic links missing"
 
 # 8. 프레임워크 검증
 echo "Verifying framework..."
@@ -213,6 +265,38 @@ if [ -f "$FRAMEWORK_BINARY" ]; then
     # 아키텍처 확인
     echo "  Architecture info:"
     lipo -info "$FRAMEWORK_BINARY"
+    
+    # 의존성 확인
+    echo "  Dependencies:"
+    otool -L "$FRAMEWORK_BINARY"
+    
+    # 서명 확인
+    echo "  Code signature verification:"
+    codesign -v "$FRAMEWORK_BINARY" && echo "    ✓ Framework signature valid" || echo "    ✗ Framework signature invalid"
+    
+    # libhangul.dylib 파일들 확인
+    echo "  Checking libhangul files:"
+    if [ -f "${FRAMEWORK_DIR}/Versions/A/libhangul.1.1.0.dylib" ]; then
+        echo "    ✓ libhangul.1.1.0.dylib exists"
+        codesign -v "${FRAMEWORK_DIR}/Versions/A/libhangul.1.1.0.dylib" && echo "    ✓ libhangul.1.1.0.dylib signature valid" || echo "    ✗ libhangul.1.1.0.dylib signature invalid"
+    else
+        echo "    ✗ libhangul.1.1.0.dylib missing"
+    fi
+    
+    if [ -f "${FRAMEWORK_DIR}/Versions/A/libhangul.1.dylib" ]; then
+        echo "    ✓ libhangul.1.dylib exists"
+        codesign -v "${FRAMEWORK_DIR}/Versions/A/libhangul.1.dylib" && echo "    ✓ libhangul.1.dylib signature valid" || echo "    ✗ libhangul.1.dylib signature invalid"
+    else
+        echo "    ✗ libhangul.1.dylib missing"
+    fi
+    
+    # 프레임워크 루트의 심볼릭 링크 확인
+    if [ -L "${FRAMEWORK_DIR}/libhangul.1.dylib" ]; then
+        echo "    ✓ libhangul.1.dylib symbolic link in framework root exists"
+        ls -la "${FRAMEWORK_DIR}/libhangul.1.dylib"
+    else
+        echo "    ✗ libhangul.1.dylib symbolic link missing in framework root"
+    fi
 else
     echo "  ✗ Framework binary not found at: $FRAMEWORK_BINARY"
     echo "  Checking what files exist in framework:"
@@ -230,7 +314,32 @@ else
     echo "  ✗ Framework creation failed"
 fi
 
-# 10. 정리
+# 10. 최종 프레임워크 서명 (모든 파일 생성 완료 후)
+echo "Final framework signing..."
+
+# 먼저 HangulKit 바이너리 자체를 서명
+echo "  Signing HangulKit binary..."
+codesign --force --sign - --timestamp=none "${FRAMEWORK_DIR}/Versions/A/${FRAMEWORK_NAME}"
+if [ $? -eq 0 ]; then
+    echo "    ✓ HangulKit binary signed successfully"
+else
+    echo "    ✗ Failed to sign HangulKit binary"
+fi
+
+# 그 다음 전체 프레임워크를 deep 서명
+echo "  Signing HangulKit framework with deep signature..."
+codesign --deep --force --sign - --timestamp=none "${FRAMEWORK_DIR}"
+if [ $? -eq 0 ]; then
+    echo "    ✓ HangulKit framework signed successfully"
+    
+    # 서명 확인
+    echo "  Final signature verification:"
+    codesign -v "${FRAMEWORK_DIR}" && echo "    ✓ Final framework signature valid" || echo "    ✗ Final framework signature invalid"
+else
+    echo "    ✗ Failed to sign HangulKit framework"
+fi
+
+# 11. 정리
 echo "Cleaning up temporary files..."
 # 정적 라이브러리 파일들이 생성되지 않으므로 정리할 것이 없음
 

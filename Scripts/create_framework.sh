@@ -207,20 +207,28 @@ if [ -f "../libhangul/hangul/libhangul.1.1.0.dylib" ]; then
     echo "  Verifying install_name_tool changes..."
     otool -L "${FRAMEWORK_DIR}/Versions/A/${FRAMEWORK_NAME}" | grep libhangul || echo "  Warning: libhangul dependency not found"
     
-    # libhangul.dylib 서명 (개발용으로만, ad-hoc 서명)
+    # libhangul.dylib 서명 (개발자 인증서로 서명)
     echo "  Signing libhangul.dylib..."
-    codesign --force --sign - --timestamp=none "${FRAMEWORK_DIR}/Versions/A/libhangul.1.1.0.dylib"
-    if [ $? -eq 0 ]; then
-        echo "    ✓ libhangul.1.1.0.dylib signed successfully"
+    CODESIGN_IDENTITY=$(security find-identity -v -p codesigning | grep "Apple Development" | head -1 | cut -d '"' -f 2)
+    if [ -n "$CODESIGN_IDENTITY" ]; then
+        echo "    Using identity: $CODESIGN_IDENTITY"
+        codesign --force --sign "$CODESIGN_IDENTITY" "${FRAMEWORK_DIR}/Versions/A/libhangul.1.1.0.dylib"
+        if [ $? -eq 0 ]; then
+            echo "    ✓ libhangul.1.1.0.dylib signed successfully"
+        else
+            echo "    ✗ Failed to sign libhangul.1.1.0.dylib"
+        fi
+        
+        codesign --force --sign "$CODESIGN_IDENTITY" "${FRAMEWORK_DIR}/Versions/A/libhangul.1.dylib"
+        if [ $? -eq 0 ]; then
+            echo "    ✓ libhangul.1.dylib signed successfully"
+        else
+            echo "    ✗ Failed to sign libhangul.1.dylib"
+        fi
     else
-        echo "    ✗ Failed to sign libhangul.1.1.0.dylib"
-    fi
-    
-    codesign --force --sign - --timestamp=none "${FRAMEWORK_DIR}/Versions/A/libhangul.1.dylib"
-    if [ $? -eq 0 ]; then
-        echo "    ✓ libhangul.1.dylib signed successfully"
-    else
-        echo "    ✗ Failed to sign libhangul.1.dylib"
+        echo "    ⚠️  No Apple Development identity found, using ad-hoc signing"
+        codesign --force --sign - --timestamp=none "${FRAMEWORK_DIR}/Versions/A/libhangul.1.1.0.dylib"
+        codesign --force --sign - --timestamp=none "${FRAMEWORK_DIR}/Versions/A/libhangul.1.dylib"
     fi
     
     echo "  ✓ libhangul.dylib bundled, signed, and dependency path updated"
@@ -319,24 +327,32 @@ echo "Final framework signing..."
 
 # 먼저 HangulKit 바이너리 자체를 서명
 echo "  Signing HangulKit binary..."
-codesign --force --sign - --timestamp=none "${FRAMEWORK_DIR}/Versions/A/${FRAMEWORK_NAME}"
-if [ $? -eq 0 ]; then
-    echo "    ✓ HangulKit binary signed successfully"
-else
-    echo "    ✗ Failed to sign HangulKit binary"
-fi
+CODESIGN_IDENTITY=$(security find-identity -v -p codesigning | grep "Apple Development" | head -1 | cut -d '"' -f 2)
+if [ -n "$CODESIGN_IDENTITY" ]; then
+    echo "    Using identity: $CODESIGN_IDENTITY"
+    codesign --force --sign "$CODESIGN_IDENTITY" "${FRAMEWORK_DIR}/Versions/A/${FRAMEWORK_NAME}"
+    if [ $? -eq 0 ]; then
+        echo "    ✓ HangulKit binary signed successfully"
+    else
+        echo "    ✗ Failed to sign HangulKit binary"
+    fi
 
-# 그 다음 전체 프레임워크를 deep 서명
-echo "  Signing HangulKit framework with deep signature..."
-codesign --deep --force --sign - --timestamp=none "${FRAMEWORK_DIR}"
-if [ $? -eq 0 ]; then
-    echo "    ✓ HangulKit framework signed successfully"
-    
-    # 서명 확인
-    echo "  Final signature verification:"
-    codesign -v "${FRAMEWORK_DIR}" && echo "    ✓ Final framework signature valid" || echo "    ✗ Final framework signature invalid"
+    # 그 다음 전체 프레임워크를 deep 서명
+    echo "  Signing HangulKit framework with deep signature..."
+    codesign --deep --force --sign "$CODESIGN_IDENTITY" "${FRAMEWORK_DIR}"
+    if [ $? -eq 0 ]; then
+        echo "    ✓ HangulKit framework signed successfully"
+        
+        # 서명 확인
+        echo "  Final signature verification:"
+        codesign -v "${FRAMEWORK_DIR}" && echo "    ✓ Final framework signature valid" || echo "    ✗ Final framework signature invalid"
+    else
+        echo "    ✗ Failed to sign HangulKit framework"
+    fi
 else
-    echo "    ✗ Failed to sign HangulKit framework"
+    echo "    ⚠️  No Apple Development identity found, using ad-hoc signing"
+    codesign --force --sign - --timestamp=none "${FRAMEWORK_DIR}/Versions/A/${FRAMEWORK_NAME}"
+    codesign --deep --force --sign - --timestamp=none "${FRAMEWORK_DIR}"
 fi
 
 # 11. 정리

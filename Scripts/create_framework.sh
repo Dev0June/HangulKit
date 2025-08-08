@@ -36,7 +36,7 @@ if [ -n "$EXISTING_DYLIB" ]; then
 else
     echo "  Building new library..."
     # CMake 설정 및 빌드 (Universal Binary)
-    if ! cmake -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DBUILD_SHARED_LIBS=ON . > /dev/null 2>&1; then
+    if ! cmake -DCMAKE_OSX_ARCHITECTURES="x86_64;arm64" -DBUILD_SHARED_LIBS=ON -DBUILD_TOOLS=OFF . > /dev/null 2>&1; then
         echo "  Error: cmake failed"
         exit 1
     fi

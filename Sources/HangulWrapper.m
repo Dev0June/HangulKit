@@ -115,6 +115,7 @@ static NSString* StringFromUCSCharArray(const ucschar* ucsString) {
     if (_keyboard) {
         hangul_keyboard_delete(_keyboard);
     }
+    [super dealloc];
 }
 
 - (void)setType:(HangulKeyboardType)type {
@@ -186,6 +187,7 @@ static NSString* StringFromUCSCharArray(const ucschar* ucsString) {
     if (_inputContext) {
         hangul_ic_delete(_inputContext);
     }
+    [super dealloc];
 }
 
 #pragma mark - Input Processing

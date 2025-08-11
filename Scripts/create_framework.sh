@@ -89,7 +89,7 @@ if [ -f "../Sources/HangulWrapper.m" ]; then
     fi
     echo "  Framework directory ready"
     
-    # 새로운 동적 라이브러리 생성
+    # 새로운 동적 라이브러리 생성 (libhangul을 직접 링크)
     clang -arch x86_64 -arch arm64 \
         -dynamiclib \
         -install_name @rpath/${FRAMEWORK_NAME}.framework/${FRAMEWORK_NAME} \
@@ -100,10 +100,10 @@ if [ -f "../Sources/HangulWrapper.m" ]; then
         -I ../libhangul/english \
         -I ../Sources \
         -framework Foundation \
+        ../libhangul/hangul/libhangul.1.1.0.dylib \
         ../Sources/HangulWrapper.m \
         ../Sources/EngWrapper.m \
         ../libhangul/english/enginputcontext.c \
-        ../libhangul/hangul/libhangul.1.1.0.dylib \
         -o "${FRAMEWORK_DIR}/Versions/A/${FRAMEWORK_NAME}"
     
     if [ $? -eq 0 ] && [ -f "${FRAMEWORK_DIR}/Versions/A/${FRAMEWORK_NAME}" ]; then
@@ -152,6 +152,7 @@ echo "Creating module map..."
 cat > "${FRAMEWORK_DIR}/Versions/A/Modules/module.modulemap" << 'EOF'
 framework module HangulKit {
     header "HangulWrapper.h"
+    header "EngWrapper.h"
     
     export *
     
@@ -197,7 +198,7 @@ EOF
 
 echo "Info.plist created"
 
-# libhangul.dylib를 프레임워크에 복사 및 경로 수정
+# libhangul.dylib를 프레임워크에 복사하고 경로 수정
 echo "Bundling libhangul.dylib into framework..."
 if [ -f "../libhangul/hangul/libhangul.1.1.0.dylib" ]; then
     # libhangul.dylib를 프레임워크에 복사
@@ -209,8 +210,7 @@ if [ -f "../libhangul/hangul/libhangul.1.1.0.dylib" ]; then
     cd - > /dev/null
     
     # HangulKit 프레임워크의 libhangul 의존성 경로를 프레임워크 내부로 수정
-    # HangulKit 바이너리는 프레임워크 루트에 심볼릭 링크되므로 Versions/A/ 경로 필요
-    install_name_tool -change @rpath/libhangul.1.dylib @loader_path/Versions/A/libhangul.1.dylib "${FRAMEWORK_DIR}/Versions/A/${FRAMEWORK_NAME}"
+    install_name_tool -change @rpath/libhangul.1.dylib @loader_path/libhangul.1.dylib "${FRAMEWORK_DIR}/Versions/A/${FRAMEWORK_NAME}"
     
     # install_name_tool 결과 확인
     echo "  Verifying install_name_tool changes..."
@@ -367,21 +367,3 @@ fi
 # 11. 정리
 echo "Cleaning up temporary files..."
 # 정적 라이브러리 파일들이 생성되지 않으므로 정리할 것이 없음
-
-echo ""
-echo "${FRAMEWORK_NAME}.framework 생성 완료!"
-echo "위치: ${FRAMEWORK_DIR}"
-echo ""
-echo "사용법:"
-echo "1. IME 프로젝트에서 프레임워크 추가:"
-echo "   - Xcode > General > Frameworks, Libraries, and Embedded Content"
-echo "   - 'Embed & Sign' 선택"
-echo ""
-echo "2. Swift/Objective-C에서 import:"
-echo "   import HangulKit"
-echo ""
-echo "3. 갈마들이 기능 사용:"
-echo "   let ic = HangulInputContext(keyboard: \"1hand-right\")"
-echo "   ic.processKey(114) // 'r'"
-echo "   ic.processKey(114) // 'r' -> '소'"
-echo ""

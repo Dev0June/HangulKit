@@ -97,9 +97,12 @@ if [ -f "../Sources/HangulWrapper.m" ]; then
         -compatibility_version 1.0.0 \
         -mmacosx-version-min=12.7 \
         -I ../libhangul/hangul \
+        -I ../libhangul/english \
         -I ../Sources \
         -framework Foundation \
         ../Sources/HangulWrapper.m \
+        ../Sources/EngWrapper.m \
+        ../libhangul/english/enginputcontext.c \
         ../libhangul/hangul/libhangul.1.1.0.dylib \
         -o "${FRAMEWORK_DIR}/Versions/A/${FRAMEWORK_NAME}"
     
@@ -130,6 +133,13 @@ if [ -f "../Sources/HangulWrapper.h" ]; then
     echo "  HangulWrapper.h copied"
 else
     echo "  Warning: HangulWrapper.h not found"
+fi
+
+if [ -f "../Sources/EngWrapper.h" ]; then
+    cp ../Sources/EngWrapper.h "${FRAMEWORK_DIR}/Versions/A/Headers/"
+    echo "  EngWrapper.h copied"
+else
+    echo "  Warning: EngWrapper.h not found"
 fi
 
 # hangul.h는 HangulWrapper.h와 심볼 충돌을 일으키므로 포함하지 않음
@@ -175,8 +185,6 @@ cat > "${FRAMEWORK_DIR}/Versions/A/Resources/Info.plist" << EOF
     <string>1.1.0</string>
     <key>CFBundleVersion</key>
     <string>1.1.0</string>
-    <key>CFBundleSignature</key>
-    <string>????</string>
     <key>MinimumOSVersion</key>
     <string>10.15</string>
     <key>CFBundleSupportedPlatforms</key>
@@ -201,7 +209,8 @@ if [ -f "../libhangul/hangul/libhangul.1.1.0.dylib" ]; then
     cd - > /dev/null
     
     # HangulKit 프레임워크의 libhangul 의존성 경로를 프레임워크 내부로 수정
-    install_name_tool -change @rpath/libhangul.1.dylib @loader_path/libhangul.1.dylib "${FRAMEWORK_DIR}/Versions/A/${FRAMEWORK_NAME}"
+    # HangulKit 바이너리는 프레임워크 루트에 심볼릭 링크되므로 Versions/A/ 경로 필요
+    install_name_tool -change @rpath/libhangul.1.dylib @loader_path/Versions/A/libhangul.1.dylib "${FRAMEWORK_DIR}/Versions/A/${FRAMEWORK_NAME}"
     
     # install_name_tool 결과 확인
     echo "  Verifying install_name_tool changes..."

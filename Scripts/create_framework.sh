@@ -102,7 +102,6 @@ if [ -f "../Sources/HangulWrapper.m" ]; then
         -framework Foundation \
         ../libhangul/hangul/libhangul.1.1.0.dylib \
         ../Sources/HangulWrapper.m \
-        ../Sources/EngWrapper.m \
         ../libhangul/english/enginputcontext.c \
         -o "${FRAMEWORK_DIR}/Versions/A/${FRAMEWORK_NAME}"
     
@@ -135,12 +134,6 @@ else
     echo "  Warning: HangulWrapper.h not found"
 fi
 
-if [ -f "../Sources/EngWrapper.h" ]; then
-    cp ../Sources/EngWrapper.h "${FRAMEWORK_DIR}/Versions/A/Headers/"
-    echo "  EngWrapper.h copied"
-else
-    echo "  Warning: EngWrapper.h not found"
-fi
 
 # hangul.h는 HangulWrapper.h와 심볼 충돌을 일으키므로 포함하지 않음
 echo "  Skipping hangul.h to avoid symbol conflicts"
@@ -152,7 +145,6 @@ echo "Creating module map..."
 cat > "${FRAMEWORK_DIR}/Versions/A/Modules/module.modulemap" << 'EOF'
 framework module HangulKit {
     header "HangulWrapper.h"
-    header "EngWrapper.h"
     
     export *
     

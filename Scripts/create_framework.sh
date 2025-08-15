@@ -252,7 +252,8 @@ ln -sf Versions/Current/Headers Headers
 ln -sf Versions/Current/Resources Resources
 ln -sf Versions/Current/$FRAMEWORK_NAME $FRAMEWORK_NAME
 
-# libhangul.1.dylib는 프레임워크 루트에 노출하지 않음 (내부 의존성)
+# libhangul.1.dylib를 프레임워크 루트에 심볼릭 링크 생성 (@loader_path 해결)
+ln -sf Versions/Current/libhangul.1.dylib libhangul.1.dylib
 
 cd ../../../
 echo "Framework symbolic links created"
@@ -302,6 +303,7 @@ if [ -f "$FRAMEWORK_BINARY" ]; then
     # 프레임워크 루트의 심볼릭 링크 확인
     if [ -L "${FRAMEWORK_DIR}/libhangul.1.dylib" ]; then
         echo "    ✓ libhangul.1.dylib symbolic link in framework root exists"
+        echo "    Link target: $(readlink "${FRAMEWORK_DIR}/libhangul.1.dylib")"
         ls -la "${FRAMEWORK_DIR}/libhangul.1.dylib"
     else
         echo "    ✗ libhangul.1.dylib symbolic link missing in framework root"

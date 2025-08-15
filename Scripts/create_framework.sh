@@ -97,12 +97,10 @@ if [ -f "../Sources/HangulWrapper.m" ]; then
         -compatibility_version 1.0.0 \
         -mmacosx-version-min=12.7 \
         -I ../libhangul/hangul \
-        -I ../libhangul/english \
         -I ../Sources \
         -framework Foundation \
         ../libhangul/hangul/libhangul.1.1.0.dylib \
         ../Sources/HangulWrapper.m \
-        ../libhangul/english/enginputcontext.c \
         -o "${FRAMEWORK_DIR}/Versions/A/${FRAMEWORK_NAME}"
     
     if [ $? -eq 0 ] && [ -f "${FRAMEWORK_DIR}/Versions/A/${FRAMEWORK_NAME}" ]; then

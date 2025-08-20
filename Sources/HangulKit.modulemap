@@ -1,0 +1,12 @@
+framework module HangulKit {
+  umbrella header "HangulKit-Umbrella.h"
+  
+  export *
+  module * { export * }
+  
+  // libhangul C module
+  module libhangul {
+    header "hangul.h"
+    export *
+  }
+}
